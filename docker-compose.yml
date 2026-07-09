@@ -1,0 +1,117 @@
+# ─────────────────────────────────────────────────────────────────
+# docker-compose.yml
+# Campayn AI Assistant — Multi-Container Orchestration
+#
+# WHAT THIS DOES
+# ---------------
+# Defines and connects THREE containers that work together:
+#
+#   api      → FastAPI backend  (port 8000)
+#   ui       → Streamlit UI     (port 8501)
+#   redis    → Conversation memory (port 6379)
+#
+# WHY DOCKER COMPOSE?
+# --------------------
+# One command brings up the entire stack:
+#   docker-compose up --build
+#
+# One command tears it down:
+#   docker-compose down
+#
+# Each service runs in its own isolated container but can talk
+# to the others via Docker's internal network by service name.
+# e.g. the api container reaches redis at redis://redis:6379
+#      (not localhost — Docker gives each container its own localhost)
+#
+# USAGE
+# ------
+#   cp .env.example .env          # add your API keys
+#   docker-compose up --build     # first run (builds images)
+#   docker-compose up             # subsequent runs (uses cached images)
+#   docker-compose down           # stop everything
+#   docker-compose logs -f api    # tail logs from the api service
+# ─────────────────────────────────────────────────────────────────
+
+version: "3.9"
+
+services:
+
+  # ── FastAPI backend ──────────────────────────────────────────
+  api:
+    build:
+      context: .        # build from the current directory
+      dockerfile: Dockerfile
+    container_name: campayn-api
+    ports:
+      - "8000:8000"     # host:container — access at localhost:8000
+    env_file:
+      - .env            # loads GEMINI_API_KEY, LANGCHAIN_API_KEY etc.
+    environment:
+      # Override REDIS_URL to use the redis service name
+      # Inside Docker, containers talk to each other by service name
+      # 'redis' is the service name defined below — not localhost
+      - REDIS_URL=redis://redis:6379
+      - ENVIRONMENT=production
+    volumes:
+      # Mount data directory so ChromaDB index persists
+      # between container restarts — without this the vector store
+      # is wiped every time the container restarts
+      - ./data:/app/data
+      # Mount logs directory for easy access from host
+      - ./logs:/app/logs
+    depends_on:
+      - redis           # wait for redis to start before api starts
+    restart: unless-stopped   # auto-restart if container crashes
+    healthcheck:
+      # Docker pings this endpoint every 30s to check if api is alive
+      # If it fails 3 times in a row, Docker marks the container unhealthy
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout:  10s
+      retries:  3
+
+  # ── Streamlit UI ─────────────────────────────────────────────
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: campayn-ui
+    # Override the default CMD to run Streamlit instead of uvicorn
+    command: streamlit run frontend/streamlit_app.py
+             --server.port 8501
+             --server.address 0.0.0.0
+             --server.headless true
+             --browser.gatherUsageStats false
+    ports:
+      - "8501:8501"     # access Streamlit at localhost:8501
+    env_file:
+      - .env
+    environment:
+      # The UI calls the API — inside Docker, use service name not localhost
+      # "api" = the service name of our FastAPI container
+      - API_BASE_URL=http://api:8000
+    depends_on:
+      - api             # ui needs api to be up first
+    restart: unless-stopped
+
+  # ── Redis — conversation memory ───────────────────────────────
+  redis:
+    image: redis:7-alpine   # official Redis image, Alpine = tiny (30MB)
+    container_name: campayn-redis
+    ports:
+      - "6379:6379"   # expose redis to host for debugging (optional)
+    volumes:
+      # Persist Redis data between restarts
+      # Without this, all conversation histories are lost when
+      # the redis container restarts
+      - redis_data:/data
+    restart: unless-stopped
+    # Run redis with persistence enabled
+    # appendonly yes = write every operation to disk (safer than default)
+    command: redis-server --appendonly yes
+
+# ── Named volumes ─────────────────────────────────────────────
+# Named volumes are managed by Docker — they persist on the host
+# even after containers are removed. Better than anonymous volumes.
+volumes:
+  redis_data:     # Redis persistence data
