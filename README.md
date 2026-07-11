@@ -6,6 +6,18 @@ A dual-role (brand + creator) influencer-marketing assistant that combines **str
 
 ---
 
+## Demo
+
+Brand assistant — role selection and guided intake:
+
+![Campayn brand assistant — welcome screen and guided campaign intake](docs/screenshots/brand-assistant-home.png)
+
+A knowledge-base-grounded skincare campaign brief with matched creator recommendations:
+
+![Skincare campaign brief grounded in the knowledge base, with a deduped creator pool](docs/screenshots/skincare-campaign-brief.png)
+
+---
+
 ## Architecture
 
 ```
