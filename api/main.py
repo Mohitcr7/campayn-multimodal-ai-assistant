@@ -38,8 +38,12 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 # Load .env file before anything else
-# This makes GEMINI_API_KEY, LANGCHAIN_API_KEY etc. available
-load_dotenv()
+# This makes GEMINI_API_KEY, LANGCHAIN_API_KEY etc. available.
+# override=True makes the .env file authoritative in local dev, so a stale
+# or empty shell variable can't silently shadow the value in .env. In Docker
+# there is no .env in the image (see .dockerignore), so this is a no-op there
+# and the container's injected env vars are used as-is.
+load_dotenv(override=True)
 
 # ─────────────────────────────────────────────────────────────────
 # APP CREATION

@@ -346,9 +346,18 @@ def run_module2(
     Returns:
         prompt_block : formatted string ready for Prompt Constructor
         metadata     : retrieval stats for LangSmith tracing
+
+    Fails soft: if retrieval errors (e.g. ChromaDB unavailable or the
+    embedding API is down), we return an empty block instead of crashing
+    the whole pipeline. The assistant still answers using Module 1 /
+    Module 3 context — it just loses the knowledge-base grounding.
     """
-    chunks, metadata = retrieve_chunks(query, role, top_k, part_filter)
-    return format_for_prompt(chunks, metadata), metadata
+    try:
+        chunks, metadata = retrieve_chunks(query, role, top_k, part_filter)
+        return format_for_prompt(chunks, metadata), metadata
+    except Exception as e:
+        print(f"[Module 2] Retrieval failed ({e}) — continuing without RAG context")
+        return "", {"error": str(e), "chunk_count": 0}
 
 
 # ─────────────────────────────────────────────────────────────────

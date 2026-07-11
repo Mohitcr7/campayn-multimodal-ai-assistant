@@ -265,7 +265,10 @@ async def health_check() -> HealthResponse:
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
     modules["gemini"] = "configured" if gemini_key else "missing GEMINI_API_KEY"
 
-    # Check Anthropic (automatic fallback if Gemini fails — see api/llm_fallback.py)
+    # Fallback chain if Gemini fails: Nemotron (OpenRouter) → Claude — see api/llm_fallback.py
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")
+    modules["nemotron_fallback"] = "configured" if openrouter_key else "not configured"
+
     anthropic_key = os.environ.get("ANTHROPIC_API_KEY", "")
     modules["anthropic_fallback"] = "configured" if anthropic_key else "not configured"
 

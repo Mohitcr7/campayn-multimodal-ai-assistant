@@ -466,48 +466,72 @@ def filter_profiles(
         top_df   : DataFrame of top-N results, scored and ranked
         metadata : dict with filter summary, match count, confidence
     """
-    mask = pd.Series(True, index=df.index)
+    # ── 4. Build one boolean mask per constraint ─────────────────────────
+    # Keeping them separate lets us drop an individual constraint later
+    # (relaxation) without recomputing the rest.
+    masks: dict[str, pd.Series] = {}
 
-    # ── 4a. Category filter ──────────────────────────────────────────────
     if spec.categories:
         canonical_cats = [c.lower() for c in spec.categories]
-        mask &= df["category_norm"].isin(canonical_cats)
+        masks["categories"] = df["category_norm"].isin(canonical_cats)
 
-    # ── 4b. Subcategory partial match ────────────────────────────────────
     if spec.subcategories:
         sub_mask = pd.Series(False, index=df.index)
         for sub in spec.subcategories:
             sub_mask |= df["subcategory_clean"].str.lower().str.contains(
                 sub.lower(), na=False, regex=False
             )
-        mask &= sub_mask
+        masks["subcategories"] = sub_mask
 
-    # ── 4c. Follower range ───────────────────────────────────────────────
-    if spec.followers_min is not None:
-        mask &= df["followers"] >= spec.followers_min
-    if spec.followers_max is not None:
-        mask &= df["followers"] <= spec.followers_max
+    if spec.followers_min is not None or spec.followers_max is not None:
+        f_mask = pd.Series(True, index=df.index)
+        if spec.followers_min is not None:
+            f_mask &= df["followers"] >= spec.followers_min
+        if spec.followers_max is not None:
+            f_mask &= df["followers"] <= spec.followers_max
+        masks["followers"] = f_mask
 
-    # ── 4d. Tier filter ──────────────────────────────────────────────────
     if spec.tiers:
-        mask &= df["tier"].isin(spec.tiers)
+        masks["tiers"] = df["tier"].isin(spec.tiers)
 
-    # ── 4e. CPV budget filter (brand can afford up to spec.cpv_budget_max) ──
+    # CPV budget: a creator is affordable if their cheapest CPV is within budget.
     if spec.cpv_budget_max is not None:
-        mask &= df["cpv_min"] <= spec.cpv_budget_max
+        masks["cpv_budget"] = df["cpv_min"] <= spec.cpv_budget_max
 
-    # ── 4f. Source filter ────────────────────────────────────────────────
     if spec.sources:
-        mask &= df["source"].isin(spec.sources)
+        masks["sources"] = df["source"].isin(spec.sources)
 
-    # ── 4g. Keyword filter (name or subcategory) ─────────────────────────
     if spec.keyword:
         kw = spec.keyword.lower()
-        kw_mask = (
+        masks["keyword"] = (
             df["name"].str.lower().str.contains(kw, na=False, regex=False)
             | df["subcategory_clean"].str.lower().str.contains(kw, na=False, regex=False)
         )
-        mask &= kw_mask
+
+    def _combine(active_keys: list[str]) -> pd.Series:
+        m = pd.Series(True, index=df.index)
+        for k in active_keys:
+            m &= masks[k]
+        return m
+
+    # ── 4x. Apply filters, relaxing soft constraints if nothing matches ──
+    # One over-tight optional constraint (typically an unrealistically low CPV
+    # budget) shouldn't wipe the whole result set and leave the assistant with
+    # no creators to show. If the strict combination yields nothing, drop the
+    # softest constraints one at a time — CPV budget first, then
+    # subcategories / keyword / sources — while keeping the core intent
+    # (category + follower tier). Whatever gets dropped is reported in metadata
+    # so the response can tell the user (e.g. "no exact match under ₹0.10 CPV").
+    active   = list(masks.keys())
+    mask     = _combine(active)
+    relaxed: list[str] = []
+    for key in ["cpv_budget", "subcategories", "keyword", "sources"]:
+        if mask.sum() > 0:
+            break
+        if key in active:
+            active.remove(key)
+            relaxed.append(key)
+            mask = _combine(active)
 
     filtered = df[mask].copy()
     total_matches = len(filtered)
@@ -536,6 +560,7 @@ def filter_profiles(
         "total_matches":  total_matches,
         "returned":       len(top_df),
         "confidence":     confidence,
+        "relaxed":        relaxed,   # constraints dropped to avoid an empty result
         "filters_applied": {
             "categories":    spec.categories,
             "subcategories": spec.subcategories,
@@ -583,6 +608,22 @@ def format_for_prompt(top_df: pd.DataFrame, metadata: dict) -> str:
         f"Returned: {metadata['returned']}  |  "
         f"Confidence: {metadata['confidence']}"
     )
+    # If constraints were relaxed to avoid an empty list, tell the model so it
+    # can be honest with the user about which filter was loosened.
+    _relaxed = metadata.get("relaxed") or []
+    if _relaxed:
+        _labels = {
+            "cpv_budget":    "CPV budget",
+            "subcategories": "sub-niche",
+            "keyword":       "keyword",
+            "sources":       "source",
+        }
+        pretty = ", ".join(_labels.get(r, r) for r in _relaxed)
+        lines.append(
+            f"NOTE: no creators matched every filter, so the {pretty} "
+            f"constraint(s) were relaxed to surface the closest fits. "
+            f"Mention this to the user."
+        )
     lines.append("")
 
     for i, (_, row) in enumerate(top_df.iterrows(), start=1):

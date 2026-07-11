@@ -99,7 +99,7 @@ import os
 import time
 import uuid
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Annotated, Any, Optional
 
 # ── LangGraph core ────────────────────────────────────────────────
 # StateGraph  = the container we add nodes and edges into
@@ -200,6 +200,16 @@ def get_gemini_client() -> genai.Client:
 # Think of it as a relay baton that accumulates data at every step.
 # ─────────────────────────────────────────────────────────────────
 
+def _merge_latency(left: dict, right: dict) -> dict:
+    """
+    Reducer for node_latency. Modules 1/2/3 run in PARALLEL and each writes
+    node_latency in the same super-step. Without a reducer LangGraph rejects
+    the concurrent writes ("can receive only one value per step"). Merging
+    the dicts lets every parallel node contribute its own timing key.
+    """
+    return {**(left or {}), **(right or {})}
+
+
 class CampaynState(TypedDict):
     # ── What the user sent ────────────────────────────────────────
     query:           str              # the user's message
@@ -233,7 +243,7 @@ class CampaynState(TypedDict):
 
     # ── Observability ─────────────────────────────────────────────
     trace_id:        Optional[str]    # LangSmith run ID
-    node_latency:    dict             # {node_name: milliseconds}
+    node_latency:    Annotated[dict, _merge_latency]  # {node_name: ms}; parallel-safe
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -310,24 +320,34 @@ def node_intent_parser(state: CampaynState) -> dict:
     df = get_dataframe()
 
     # ── Path A: MCQ answers just came in — finalise the spec ─────────
-    if state.get("mcq_answers") and state.get("intent_result"):
+    # Trigger on mcq_answers alone. run_pipeline rebuilds a fresh state on
+    # every call (intent_result=None), so the originally-extracted spec does
+    # NOT survive the client round-trip. If it happens to be present (e.g.
+    # restored by the checkpointer) reuse it; otherwise re-extract what the
+    # model can infer. Either way finalize_with_mcq_answers() fills the gaps
+    # from the user's selections, so the spec comes out complete and we skip
+    # re-asking (needs_mcq=False). Without this, missing intent_result made
+    # the resume condition never fire → the same MCQ was asked forever.
+    if state.get("mcq_answers"):
         import dataclasses
-        stored = state["intent_result"]
+        stored = state.get("intent_result")
+        if stored:
+            extracted = stored["extracted"]
+        else:
+            reparse   = run_intent_parser(query=state["query"], df=df, role=state["role"])
+            extracted = reparse.extracted
 
-        # finalize_with_mcq_answers() merges:
-        #   extracted fields (from Gemini, saved in intent_result)
-        #   + mcq_answers (from the user's MCQ selections)
-        #   → complete FilterSpec
         spec = finalize_with_mcq_answers(
             # Minimal duck-typed object — only needs .extracted attribute
-            type("R", (), {"extracted": stored["extracted"]})(),
+            type("R", (), {"extracted": extracted})(),
             state["mcq_answers"],
         )
         return {
-            "filter_spec":  dataclasses.asdict(spec),  # dict so state stays JSON-safe
-            "needs_mcq":    False,
-            "mcq_questions":None,
-            "history":      history,
+            "filter_spec":   dataclasses.asdict(spec),  # dict so state stays JSON-safe
+            "needs_mcq":     False,
+            "mcq_questions": None,
+            "intent_result": None,
+            "history":       history,
             "node_latency": {
                 **state.get("node_latency", {}),
                 "intent_parser": round((time.time() - t0) * 1000, 1),
@@ -641,20 +661,22 @@ def node_save_memory(state: CampaynState) -> dict:
 #   A list of Send() objects → dispatch multiple nodes in parallel
 # ─────────────────────────────────────────────────────────────────
 
-def route_after_intent(state: CampaynState) -> str:
+def route_after_intent(state: CampaynState):
     """
     Called after node_intent_parser completes.
-    Decides: pause for MCQ, or continue to modules?
+    Decides: pause for MCQ, or fan out to the modules in parallel?
 
-    Returns a STRING — single destination (no parallelism at this step).
-    LangGraph uses this string to look up the next node in the edge map.
+    Returns either:
+      - END          → pause the graph, return the MCQ to the user
+      - list[Send]   → dispatch modules 1/2/(3) simultaneously
 
-    "await_mcq"  → mapped to END in build_graph()
-    "run_modules"→ mapped to fan_out_to_modules in build_graph()
+    LangGraph dispatches a returned list of Send() objects as a parallel
+    fan-out. (Path-map targets must be node names / END, so the Send list
+    has to come straight out of the routing function — not from a path map.)
     """
     if state.get("needs_mcq"):
-        return "await_mcq"    # pause — graph stops at END, returns MCQ to user
-    return "run_modules"       # continue — fan out to modules
+        return END                       # pause — graph stops, returns MCQ to user
+    return fan_out_to_modules(state)     # continue — parallel fan-out
 
 
 def fan_out_to_modules(state: CampaynState) -> list[Send]:
@@ -746,22 +768,13 @@ def build_graph() -> Any:
     builder.set_entry_point("intent_parser")
 
     # ── Step 3: Conditional edge after intent_parser ───────────────
-    # route_after_intent() returns "await_mcq" or "run_modules".
-    # The dict maps those strings to actual destinations.
-    #
-    # "await_mcq"  → END (graph stops, returns MCQ to user)
-    # "run_modules"→ fan_out_to_modules (which returns Send() list)
-    #
-    # When the destination is itself a function that returns Send() objects,
-    # LangGraph calls that function and dispatches all nodes in parallel.
+    # route_after_intent() returns either END (MCQ pause) or a list of
+    # Send() objects (parallel fan-out to the module nodes). No path_map:
+    # the destinations are carried by the Send() objects themselves, and
+    # END is a built-in target.
     builder.add_conditional_edges(
         "intent_parser",       # from this node
-        route_after_intent,    # call this function to decide
-        {
-            "await_mcq":   END,                  # MCQ path → stop
-            "run_modules": fan_out_to_modules,   # ← returns list[Send]
-                                                 #   → parallel fan-out
-        },
+        route_after_intent,    # returns END or list[Send]
     )
 
     # ── Step 4: Fan-in edges to prompt_builder ─────────────────────

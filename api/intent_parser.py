@@ -103,6 +103,14 @@ def _setup_gemini_client():
             model=GEMINI_MODEL,
             google_api_key=GEMINI_API_KEY,
             temperature=0,
+            # gRPC (the default transport) deadlocks under uvicorn's fork/threads
+            # — "Other threads are currently calling into gRPC, skipping fork()".
+            # REST avoids the gRPC channel entirely.
+            transport="rest",
+            # Fail fast instead of hanging on the 600s default retry window,
+            # so a stalled call surfaces as an error rather than a UI timeout.
+            timeout=60,
+            max_retries=2,
         )
         _SDK_MODE = "langchain"
         print(f"[IntentParser] SDK: langchain-google-genai ✓  model={GEMINI_MODEL}")
@@ -387,9 +395,9 @@ def stage1_extract(query: str, role: str = "brand") -> dict:
             raw_text = _call_gemini_rest(prompt)
 
     except Exception as gemini_error:
-        print(f"[Stage 1] Gemini failed ({gemini_error}) — retrying with Anthropic...")
-        from api.llm_fallback import call_anthropic_text
-        raw_text = call_anthropic_text(prompt, temperature=0, json_mode=True)
+        print(f"[Stage 1] Gemini failed ({gemini_error}) — trying fallback chain (Nemotron → Claude)...")
+        from api.llm_fallback import fallback_text
+        raw_text, _provider = fallback_text(prompt, temperature=0, json_mode=True)
 
     # ── Clean the response ───────────────────────────────────────────────
     # Sometimes the model wraps JSON in ```json ... ``` markdown fences

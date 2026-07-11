@@ -33,6 +33,7 @@ Author : Mohit Chauhan — Campayn Multimodal AI Assistant
 """
 
 import base64
+import os
 import time
 import uuid
 from io import BytesIO
@@ -45,7 +46,7 @@ import streamlit as st
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────
 
-API_BASE_URL = "http://localhost:8000"   # FastAPI backend
+API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000")   # FastAPI backend
 PAGE_TITLE   = "Campayn AI Assistant"
 PAGE_ICON    = "🎯"
 
@@ -220,8 +221,8 @@ def call_chat_api(
     except requests.exceptions.ConnectionError:
         return {
             "error": (
-                "Cannot connect to the API at `http://localhost:8000`. "
-                "Make sure FastAPI is running: `uvicorn main:app --reload`"
+                f"Cannot connect to the API at `{API_BASE_URL}`. "
+                "Make sure FastAPI is running: `uvicorn api.main:app --reload`"
             )
         }
     except requests.exceptions.Timeout:
