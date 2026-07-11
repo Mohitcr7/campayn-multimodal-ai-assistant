@@ -534,6 +534,16 @@ def filter_profiles(
             mask = _combine(active)
 
     filtered = df[mask].copy()
+
+    # ── Deduplicate creators ─────────────────────────────────────────────
+    # The dataset lists the same creator under multiple `source` values, so a
+    # handle can appear several times (56k rows vs ~38k unique handles). Keep
+    # one row per handle — the highest-follower instance — so the top-N slots
+    # aren't wasted showing the same person twice.
+    filtered = (
+        filtered.sort_values("followers", ascending=False)
+                .drop_duplicates(subset="ig_handle", keep="first")
+    )
     total_matches = len(filtered)
 
     # ── 4h. Relevance scoring ────────────────────────────────────────────

@@ -205,8 +205,8 @@ FIELD_META = {
     "cpv_budget_max": {
         "label":       "What is your max CPV budget (₹ per view)?",
         "options_src": "static",
-        "static_opts": ["₹0.10", "₹0.15", "₹0.20", "₹0.25", "₹0.35", "₹0.50", "No limit"],
-        "hint":        "CPV = cost per view. Lower CPV = more views per rupee.",
+        "static_opts": ["₹0.15", "₹0.20", "₹0.25", "₹0.35", "₹0.50", "No limit"],
+        "hint":        "Typical creator CPV is ₹0.15–0.35 by niche & tier. A lower cap means fewer matches.",
     },
     "subcategories": {
         "label":       "Any specific content style?",

@@ -10,8 +10,10 @@ Usage:
 """
 
 import os
+from dotenv import load_dotenv
 from google import genai
 
+load_dotenv()   # read GEMINI_API_KEY from .env when run standalone
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 client = genai.Client(api_key=GEMINI_API_KEY)
 

@@ -40,8 +40,14 @@ from pathlib import Path
 from typing import Optional
 
 import chromadb                    # pip install chromadb
+from dotenv import load_dotenv     # pip install python-dotenv
 from google import genai           # pip install google-genai  ← NEW SDK
 from google.genai import types     # types.EmbedContentConfig etc.
+
+# Load .env so GEMINI_API_KEY (and friends) are available when this script is
+# run standalone from the project root. Without this the key is empty and the
+# genai client raises "Missing key inputs argument".
+load_dotenv()
 
 # ─────────────────────────────────────────────────────────────────
 # CONFIGURATION
