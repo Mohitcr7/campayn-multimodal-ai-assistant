@@ -1,0 +1,307 @@
+<title>Anatomy of an Agentic AI Pipeline</title>
+<style>
+  :root{
+    --bg:#0B111C; --panel:#121B2A; --panel-2:#0E1624; --line:#22304a;
+    --text:#E6ECF5; --muted:#8fa0b8; --faint:#5c6b82;
+    --amber:#FFB224; --cyan:#55C8E8; --violet:#9D8CF5; --green:#47C98F; --red:#F26D6D;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  html{background:var(--bg)}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.55;margin:0}
+  .wrap{max-width:1180px;margin:0 auto;padding:40px 20px 80px}
+
+  /* ── header ─────────────────────────────── */
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:var(--amber);margin:0 0 14px}
+  h1{font-size:clamp(28px,4.5vw,44px);line-height:1.12;margin:0 0 14px;font-weight:750;letter-spacing:-.015em;text-wrap:balance}
+  .sub{color:var(--muted);max-width:62ch;margin:0 0 8px;font-size:16.5px}
+  .sub b{color:var(--text);font-weight:600}
+
+  /* ── stats strip ────────────────────────── */
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin:26px 0 34px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 16px}
+  .stat b{display:block;font-family:var(--mono);font-size:19px;color:var(--amber);font-variant-numeric:tabular-nums}
+  .stat span{font-size:12px;color:var(--muted);letter-spacing:.04em}
+
+  /* ── controls ───────────────────────────── */
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:18px}
+  button{font-family:var(--mono);font-size:13.5px;letter-spacing:.03em;cursor:pointer;border-radius:8px;padding:11px 18px;border:1px solid var(--line);background:var(--panel);color:var(--text);transition:border-color .15s,background .15s}
+  button:hover{border-color:var(--amber)}
+  button:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+  #playBtn{background:var(--amber);border-color:var(--amber);color:#161009;font-weight:700}
+  #playBtn:hover{background:#ffc14d}
+  #outageBtn[aria-pressed="true"]{border-color:var(--red);color:var(--red)}
+  .hint{font-size:13px;color:var(--faint);font-family:var(--mono)}
+
+  /* ── layout: diagram + inspector ────────── */
+  .stage{display:grid;grid-template-columns:minmax(0,1fr) 350px;gap:18px;align-items:start}
+  @media(max-width:940px){.stage{grid-template-columns:1fr}}
+  .board{background:var(--panel-2);border:1px solid var(--line);border-radius:14px;padding:10px;overflow-x:auto;
+    background-image:radial-gradient(circle,#1b2740 1px,transparent 1px);background-size:26px 26px}
+  svg{display:block;width:100%;height:auto;min-width:560px}
+
+  /* svg node styling */
+  .node rect{fill:var(--panel);stroke:var(--line);stroke-width:1.4;rx:10}
+  .node{cursor:pointer}
+  .node:hover rect{stroke:var(--amber)}
+  .node.active rect{stroke:var(--amber);stroke-width:2;filter:drop-shadow(0 0 7px rgba(255,178,36,.4))}
+  .node text{fill:var(--text);font-family:var(--mono);font-size:13.5px;font-weight:600}
+  .node .tag{fill:var(--faint);font-size:10px;font-weight:400;letter-spacing:.08em}
+  .edge{stroke:var(--line);stroke-width:1.6;fill:none}
+  .edge.lit{stroke:var(--cyan);stroke-width:2}
+  .edge.dashed{stroke-dasharray:5 5}
+  .badge{font-family:var(--mono);font-size:10px;letter-spacing:.06em}
+  .pulse{fill:var(--amber);filter:drop-shadow(0 0 5px rgba(255,178,36,.8))}
+  .chip rect{rx:7}
+  .chip text{font-size:11.5px}
+  .chip.ok rect{stroke:var(--green)}
+  .chip.dead rect{stroke:var(--red)}
+  .chip.dead text{fill:var(--red);text-decoration:line-through}
+
+  /* ── inspector panel ───────────────────── */
+  .inspector{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px;position:sticky;top:16px}
+  .inspector .kicker{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;margin:0 0 8px}
+  .inspector h2{font-size:19px;margin:0 0 10px;letter-spacing:-.01em}
+  .inspector p{font-size:14.5px;color:var(--muted);margin:0 0 14px}
+  .inspector p b{color:var(--text)}
+  .tech{display:flex;flex-wrap:wrap;gap:7px}
+  .tech span{font-family:var(--mono);font-size:11.5px;padding:4px 10px;border:1px solid var(--line);border-radius:999px;color:var(--muted)}
+  .metric{font-family:var(--mono);font-size:12.5px;color:var(--amber);border-top:1px solid var(--line);margin-top:14px;padding-top:12px}
+
+  /* narration bar */
+  .narr{margin-top:18px;background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:10px;padding:14px 18px;font-family:var(--mono);font-size:13.5px;min-height:48px;color:var(--muted)}
+  .narr b{color:var(--amber)}
+
+  /* footer */
+  .foot{margin-top:44px;border-top:1px solid var(--line);padding-top:22px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .foot .lbl{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-right:6px}
+  .foot span.t{font-family:var(--mono);font-size:12px;padding:5px 12px;background:var(--panel);border:1px solid var(--line);border-radius:999px;color:var(--muted)}
+
+  @media(prefers-reduced-motion:reduce){.pulse{display:none}}
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">System Design · Agentic AI</p>
+  <h1>One vague sentence in.<br>A data-backed strategy out.</h1>
+  <p class="sub">This is the full data flow of a <b>multimodal agentic AI assistant</b> I built for influencer-marketing decisions — a LangGraph state machine that parses intent, asks clarifying questions like a human analyst, fans out three retrieval engines <b>in parallel</b>, and survives LLM provider outages with an automatic 3-tier failover.</p>
+  <p class="sub" style="font-size:14px;color:var(--faint)">Click any node to inspect it. Hit <b style="color:var(--amber)">▶ Run a request</b> to watch a query travel the graph.</p>
+
+  <div class="stats">
+    <div class="stat"><b>56K+</b><span>creator profiles</span></div>
+    <div class="stat"><b>3,072</b><span>embedding dims</span></div>
+    <div class="stat"><b>3×</b><span>parallel modules</span></div>
+    <div class="stat"><b>3-tier</b><span>LLM failover</span></div>
+    <div class="stat"><b>35</b><span>vision fields</span></div>
+  </div>
+
+  <div class="controls">
+    <button id="playBtn">▶ Run a request</button>
+    <button id="outageBtn" aria-pressed="false">⚡ Simulate provider outage</button>
+    <span class="hint" id="hint">tip: toggle the outage, then run the request again</span>
+  </div>
+
+  <div class="stage">
+    <div class="board">
+      <svg viewBox="0 0 760 950" role="img" aria-label="Architecture diagram: user query flows through intent parser, three parallel modules, prompt builder, generator with LLM failover, and conversation memory">
+        <!-- edges -->
+        <path id="e-user-intent"  class="edge" d="M380,96 L380,148"/>
+        <path id="e-mcq" class="edge dashed" d="M310,196 C150,196 130,120 300,80" />
+        <text x="96" y="150" class="badge" fill="var(--violet)">CLARIFYING MCQs</text>
+        <text x="96" y="164" class="badge" fill="var(--faint)">human-in-the-loop</text>
+        <path id="e-intent-m1" class="edge" d="M330,238 C240,270 165,285 150,318"/>
+        <path id="e-intent-m2" class="edge" d="M380,244 L380,318"/>
+        <path id="e-intent-m3" class="edge" d="M430,238 C520,270 595,285 610,318"/>
+        <path id="e-m1-pb" class="edge" d="M150,436 C165,480 240,500 330,522"/>
+        <path id="e-m2-pb" class="edge" d="M380,436 L380,516"/>
+        <path id="e-m3-pb" class="edge" d="M610,436 C595,480 520,500 430,522"/>
+        <path id="e-pb-gen" class="edge" d="M380,608 L380,656"/>
+        <path id="e-gen-mem" class="edge" d="M380,772 L380,816"/>
+        <text x="392" y="800" class="badge" fill="var(--faint)">+ response streamed back to user</text>
+
+        <!-- USER -->
+        <g class="node" id="n-user" tabindex="0">
+          <rect x="270" y="40" width="220" height="56"/>
+          <text x="380" y="64" text-anchor="middle">🧑 USER QUERY</text>
+          <text x="380" y="82" text-anchor="middle" class="tag">TEXT + OPTIONAL IMAGE</text>
+        </g>
+
+        <!-- INTENT -->
+        <g class="node" id="n-intent" tabindex="0">
+          <rect x="255" y="148" width="250" height="90"/>
+          <text x="380" y="180" text-anchor="middle">🧭 INTENT PARSER</text>
+          <text x="380" y="200" text-anchor="middle" class="tag">LLM → TYPED FILTER SPEC</text>
+          <text x="380" y="218" text-anchor="middle" class="tag">PAUSES GRAPH IF AMBIGUOUS</text>
+        </g>
+
+        <!-- fan-out label -->
+        <text x="380" y="292" text-anchor="middle" class="badge" fill="var(--cyan)">⚡ PARALLEL FAN-OUT — ALL THREE AT ONCE</text>
+
+        <!-- M1 -->
+        <g class="node" id="n-m1" tabindex="0">
+          <rect x="40" y="318" width="220" height="118"/>
+          <text x="150" y="348" text-anchor="middle">📊 STRUCTURED SEARCH</text>
+          <text x="150" y="368" text-anchor="middle" class="tag">PANDAS · 56K PROFILES</text>
+          <text x="150" y="386" text-anchor="middle" class="tag">TIER / NICHE / BUDGET FILTERS</text>
+          <text x="150" y="404" text-anchor="middle" class="tag">AUTO-RELAXES IF 0 MATCHES</text>
+          <text x="150" y="422" text-anchor="middle" class="tag">~150ms · NO API CALL</text>
+        </g>
+
+        <!-- M2 -->
+        <g class="node" id="n-m2" tabindex="0">
+          <rect x="270" y="318" width="220" height="118"/>
+          <text x="380" y="348" text-anchor="middle">📚 RAG RETRIEVAL</text>
+          <text x="380" y="368" text-anchor="middle" class="tag">VECTOR DB · 3,072-DIM</text>
+          <text x="380" y="386" text-anchor="middle" class="tag">SEMANTIC SEARCH + RE-RANK</text>
+          <text x="380" y="404" text-anchor="middle" class="tag">DOMAIN KNOWLEDGE BASE</text>
+          <text x="380" y="422" text-anchor="middle" class="tag">FAILS SOFT — NEVER CRASHES</text>
+        </g>
+
+        <!-- M3 -->
+        <g class="node" id="n-m3" tabindex="0">
+          <rect x="500" y="318" width="220" height="118"/>
+          <text x="610" y="348" text-anchor="middle">👁 VISION ANALYSIS</text>
+          <text x="610" y="368" text-anchor="middle" class="tag">MULTIMODAL VLM</text>
+          <text x="610" y="386" text-anchor="middle" class="tag">35-FIELD STRUCTURED SCORE</text>
+          <text x="610" y="404" text-anchor="middle" class="tag">HOOK · LIGHTING · SAFETY</text>
+          <text x="610" y="422" text-anchor="middle" class="tag">RUNS ONLY IF IMAGE SENT</text>
+        </g>
+
+        <!-- PROMPT BUILDER -->
+        <g class="node" id="n-pb" tabindex="0">
+          <rect x="255" y="516" width="250" height="92"/>
+          <text x="380" y="548" text-anchor="middle">🧩 PROMPT BUILDER</text>
+          <text x="380" y="568" text-anchor="middle" class="tag">MERGES ALL MODULE OUTPUTS</text>
+          <text x="380" y="586" text-anchor="middle" class="tag">+ LAST 3 CONVERSATION TURNS</text>
+        </g>
+
+        <!-- GENERATOR -->
+        <g class="node" id="n-gen" tabindex="0">
+          <rect x="255" y="656" width="250" height="116"/>
+          <text x="380" y="686" text-anchor="middle">✨ GENERATOR</text>
+          <text x="380" y="705" text-anchor="middle" class="tag">AUTOMATIC LLM FAILOVER ⤵</text>
+        </g>
+        <!-- failover chips inside generator -->
+        <g class="chip ok" id="c-p1"><rect x="272" y="716" width="66" height="26" fill="var(--panel-2)" stroke="var(--green)"/><text x="305" y="733" text-anchor="middle" fill="var(--text)">PRIMARY</text></g>
+        <text x="346" y="733" class="badge" fill="var(--faint)">→</text>
+        <g class="chip" id="c-p2"><rect x="358" y="716" width="66" height="26" fill="var(--panel-2)" stroke="var(--line)"/><text x="391" y="733" text-anchor="middle" fill="var(--muted)">BACKUP 1</text></g>
+        <text x="432" y="733" class="badge" fill="var(--faint)">→</text>
+        <g class="chip" id="c-p3"><rect x="444" y="716" width="66" height="26" fill="var(--panel-2)" stroke="var(--line)"/><text x="477" y="733" text-anchor="middle" fill="var(--muted)">BACKUP 2</text></g>
+
+        <!-- MEMORY -->
+        <g class="node" id="n-mem" tabindex="0">
+          <rect x="255" y="816" width="250" height="80"/>
+          <text x="380" y="846" text-anchor="middle">🗄 CONVERSATION MEMORY</text>
+          <text x="380" y="866" text-anchor="middle" class="tag">REDIS · LAST 10 TURNS · TTL</text>
+        </g>
+
+        <circle id="pulseDot" class="pulse" r="6" opacity="0"/>
+        <circle id="pulseDot2" class="pulse" r="6" opacity="0"/>
+        <circle id="pulseDot3" class="pulse" r="6" opacity="0"/>
+      </svg>
+    </div>
+
+    <aside class="inspector" id="inspector">
+      <p class="kicker" id="insKicker" style="color:var(--cyan)">START HERE</p>
+      <h2 id="insTitle">Explore the pipeline</h2>
+      <p id="insBody">Every box is clickable. Each one is a node in a <b>LangGraph state machine</b> — an agent graph where state flows through typed channels, branches pause for human input, and independent work runs concurrently.</p>
+      <div class="tech" id="insTech">
+        <span>LangGraph</span><span>FastAPI</span><span>ChromaDB</span><span>Redis</span><span>Streamlit</span>
+      </div>
+      <div class="metric" id="insMetric">7 nodes · 3 run in parallel · wall-clock = slowest module, not the sum</div>
+    </aside>
+  </div>
+
+  <div class="narr" id="narr">▶ Press <b>Run a request</b> to trace a live query through the system.</div>
+
+  <div class="foot">
+    <span class="lbl">Stack</span>
+    <span class="t">Python</span><span class="t">LangGraph</span><span class="t">LangChain</span><span class="t">ChromaDB</span><span class="t">pandas</span><span class="t">FastAPI</span><span class="t">Pydantic</span><span class="t">Redis</span><span class="t">Streamlit</span><span class="t">Docker</span><span class="t">LangSmith</span>
+  </div>
+</div>
+
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const NODES={
+    'n-user':{k:'INPUT',c:'var(--cyan)',t:'User query',b:'A plain-English ask — <b>“find fitness micro-influencers for a protein launch”</b> — optionally with an image (a creator’s post, a reel screenshot). Text and pixels enter the same pipeline.',tech:['REST API','base64 image','session ID'],m:'one endpoint · dual-role (brand / creator)'},
+    'n-intent':{k:'REASONING',c:'var(--amber)',t:'Intent parser — the analyst brain',b:'An LLM converts fuzzy language into a <b>typed filter spec</b> (niche, follower tier, budget) with a confidence score. If key fields are missing it doesn’t guess — it <b>pauses the whole graph</b> and asks the user 2–3 multiple-choice questions, then resumes exactly where it stopped.',tech:['structured JSON','confidence scoring','human-in-the-loop','graph checkpointing'],m:'temperature 0 · answers merge into the spec on resume'},
+    'n-m1':{k:'RETRIEVAL · PARALLEL',c:'var(--violet)',t:'Structured search over 56K profiles',b:'Pure pandas over an in-memory dataframe — no API, no network. Applies tier/niche/budget filters, <b>dedupes creators</b> listed under multiple sources, and if a constraint is too strict it <b>relaxes the softest filter</b> instead of returning zero results (and tells the user what it loosened).',tech:['pandas','relevance scoring','relaxation ladder','dedup'],m:'~150ms for 56,355 rows'},
+    'n-m2':{k:'RETRIEVAL · PARALLEL',c:'var(--violet)',t:'RAG over a domain knowledge base',b:'The query is embedded into a <b>3,072-dimensional vector</b> and matched against a chunked industry knowledge base in a vector DB. Results are re-ranked by role relevance and filtered by a similarity floor — so the model quotes real benchmarks instead of hallucinating them.',tech:['vector search','asymmetric embeddings','role-aware re-rank','similarity threshold'],m:'316 chunks · top-5 · fails soft if the store is down'},
+    'n-m3':{k:'RETRIEVAL · PARALLEL',c:'var(--violet)',t:'Vision analysis',b:'If an image came in, a multimodal model scores it across a <b>35-field structured schema</b>: hook strength, lighting, framing, on-screen text legibility, CTA clarity, brand safety. The LLM never sees raw pixels downstream — just this compact structured report.',tech:['VLM','structured output','brand-safety flags'],m:'skipped entirely when no image — zero wasted calls'},
+    'n-pb':{k:'SYNTHESIS',c:'var(--amber)',t:'Prompt builder',b:'The fan-in point. Waits for every dispatched module, then compiles their outputs — profile shortlist, knowledge chunks, vision report — plus the <b>last 3 conversation turns</b> into one grounded prompt with a role-specific system persona.',tech:['fan-in barrier','context assembly','token budgeting'],m:'wall-clock = slowest module, not the sum of all three'},
+    'n-gen':{k:'GENERATION',c:'var(--amber)',t:'Generator with 3-tier failover',b:'The only node that writes prose. It tries the <b>primary LLM</b>; on any failure — rate limit, quota, outage — it retries the same prompt on a <b>free-tier backup</b>, then a <b>second backup</b>. The user never sees the switch; the response just arrives.',tech:['provider abstraction','automatic retry','JSON mode','per-provider logging'],m:'tested in production: primary quota exhausted → backup served 100% of traffic'},
+    'n-mem':{k:'STATE',c:'var(--green)',t:'Conversation memory',b:'Each turn is appended to a Redis-backed history with a TTL — capped at 10 turns so context stays sharp and cheap. Next request, the intent parser reads it back and the assistant remembers the campaign you were planning.',tech:['Redis','TTL expiry','turn capping'],m:'survives restarts · fails soft to stateless mode'}
+  };
+  let active=null;
+  function inspect(id){
+    const n=NODES[id]; if(!n) return;
+    if(active) active.classList.remove('active');
+    active=$(id); active.classList.add('active');
+    $('insKicker').textContent=n.k; $('insKicker').style.color=n.c;
+    $('insTitle').textContent=n.t; $('insBody').innerHTML=n.b;
+    $('insTech').innerHTML=n.tech.map(t=>`<span>${t}</span>`).join('');
+    $('insMetric').textContent=n.m;
+  }
+  Object.keys(NODES).forEach(id=>{
+    const el=$(id);
+    el.addEventListener('click',()=>inspect(id));
+    el.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();inspect(id);}});
+  });
+
+  // ── outage simulation ──────────────────────
+  let outage=false;
+  $('outageBtn').addEventListener('click',()=>{
+    outage=!outage;
+    $('outageBtn').setAttribute('aria-pressed',outage);
+    $('c-p1').classList.toggle('dead',outage);
+    $('c-p1').classList.toggle('ok',!outage);
+    $('c-p2').classList.toggle('ok',outage);
+    $('c-p2').querySelector('rect').style.stroke=outage?'var(--green)':'var(--line)';
+    $('narr').innerHTML=outage
+      ? '⚡ <b>Primary provider is down</b> (quota exhausted / 429). Run the request — the generator reroutes to Backup 1 automatically. No user-facing error.'
+      : '✅ Primary provider restored. Run the request to see the normal path.';
+  });
+
+  // ── run-a-request animation ────────────────
+  const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const svg=document.querySelector('svg');
+  function ride(dot,pathId,dur){return new Promise(res=>{
+    const p=$(pathId),L=p.getTotalLength();let t0=null;
+    p.classList.add('lit');
+    if(reduced){setTimeout(()=>{p.classList.remove('lit');res();},dur);return;}
+    dot.setAttribute('opacity',1);
+    function step(ts){t0=t0||ts;const k=Math.min((ts-t0)/dur,1);const pt=p.getPointAtLength(k*L);
+      dot.setAttribute('cx',pt.x);dot.setAttribute('cy',pt.y);
+      if(k<1)requestAnimationFrame(step);else{dot.setAttribute('opacity',0);p.classList.remove('lit');res();}}
+    requestAnimationFrame(step);
+  });}
+  const say=h=>{$('narr').innerHTML=h;};
+  let playing=false;
+  $('playBtn').addEventListener('click',async()=>{
+    if(playing)return; playing=true; $('playBtn').disabled=true;
+    const d1=$('pulseDot'),d2=$('pulseDot2'),d3=$('pulseDot3');
+    say('1/6 — Query arrives: <b>“find fitness micro-influencers for a protein launch”</b>');
+    inspect('n-user'); await ride(d1,'e-user-intent',700);
+    say('2/6 — Intent parser extracts a typed spec: <b>niche=fitness, tier=micro</b>. Missing budget? It would pause and ask.');
+    inspect('n-intent'); await new Promise(r=>setTimeout(r,1100));
+    say('3/6 — <b>Fan-out.</b> Three engines fire simultaneously — structured search, RAG, vision.');
+    inspect('n-m2');
+    await Promise.all([ride(d1,'e-intent-m1',800),ride(d2,'e-intent-m2',800),ride(d3,'e-intent-m3',800)]);
+    await new Promise(r=>setTimeout(r,600));
+    say('4/6 — <b>Fan-in.</b> Shortlisted creators + knowledge chunks + vision report merge into one grounded prompt.');
+    inspect('n-pb');
+    await Promise.all([ride(d1,'e-m1-pb',800),ride(d2,'e-m2-pb',800),ride(d3,'e-m3-pb',800)]);
+    await ride(d1,'e-pb-gen',600);
+    inspect('n-gen');
+    if(outage){
+      say('5/6 — Primary LLM fails (429 quota). <b>Failover kicks in — Backup 1 serves the request.</b> User sees nothing but an answer.');
+    }else{
+      say('5/6 — Primary LLM generates the strategy, grounded in retrieved data — with 2 backups on standby.');
+    }
+    await new Promise(r=>setTimeout(r,1400));
+    say('6/6 — Turn saved to memory. <b>Response: a cited, data-backed campaign strategy.</b> Total: one round trip.');
+    inspect('n-mem'); await ride(d1,'e-gen-mem',600);
+    playing=false; $('playBtn').disabled=false;
+  });
+})();
+</script>

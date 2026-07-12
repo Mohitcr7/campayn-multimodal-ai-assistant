@@ -8,6 +8,8 @@ A dual-role (brand + creator) influencer-marketing assistant that combines **str
 
 ## Demo
 
+**🧠 [Explore the interactive architecture diagram](https://mohitcr7.github.io/campayn-multimodal-ai-assistant/)** — click each pipeline node, run an animated request through the graph, and simulate an LLM provider outage to watch the failover chain reroute. (Source: [docs/architecture.html](docs/architecture.html))
+
 Brand assistant — role selection and guided intake:
 
 ![Campayn brand assistant — welcome screen and guided campaign intake](docs/screenshots/brand-assistant-home.png)
