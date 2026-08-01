@@ -1,0 +1,230 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 1240" width="1440" height="1240" role="img" aria-labelledby="t d">
+<title id="t">Multimodal agentic AI assistant — architecture and data flow</title>
+<desc id="d">A LangGraph pipeline: Streamlit and FastAPI entry points feed an orchestrator, an intent parser that pauses to ask clarifying questions, three modules that run in parallel (profile filter, knowledge base RAG, vision analysis), a prompt constructor, a generator backed by a three-tier LLM failover chain, and Redis-backed state.</desc>
+
+<style>
+  .bg      { fill: #0A0A14; }
+  .panel   { fill: #12121F; stroke: #232338; stroke-width: 1.2; }
+  .panel-v { fill: #12121F; stroke: #3B2F73; stroke-width: 1.4; }
+  .panel-m { fill: #14101F; stroke: #7A2E52; stroke-width: 1.6; }
+  .panel-g { fill: #101A18; stroke: #2C6350; stroke-width: 1.6; }
+  .inner   { fill: #171728; stroke: #262640; stroke-width: 1; }
+  .chip    { fill: #16162A; stroke: #33335A; stroke-width: 1.1; }
+  .chip-g  { fill: #101E1A; stroke: #3FD68C; stroke-width: 1.2; }
+  .chip-r  { fill: #1F1216; stroke: #FF5C5C; stroke-width: 1.2; }
+
+  .h1   { font: 700 30px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #FF4D8D; }
+  .h2   { font: 700 22px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #FF6FA3; }
+  .card { font: 600 17px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #E8E8F5; }
+  .item { font: 600 13.5px -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #E8E8F5; }
+
+  .mono { font: 400 12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #8A87B8; }
+  .sub  { font: 400 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #6E6B96; }
+  .eye  { font: 400 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #7C5CFF; letter-spacing: 2.2px; }
+  .eye-g{ font: 400 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #3FD68C; letter-spacing: 2.2px; }
+  .code { font: 400 12.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #B9B4E8; }
+  .tiny { font: 400 9.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #6E6B96; }
+  .num  { font: 600 10.5px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fill: #9E8CFF; }
+
+  .edge   { fill: none; stroke: #4A3F8A; stroke-width: 1.6; }
+  .flow   { stroke-dasharray: 5 9; animation: dash 1.5s linear infinite; }
+  .flow-g { fill: none; stroke: #3FD68C; stroke-width: 1.6; stroke-dasharray: 5 9; animation: dash 1.5s linear infinite; }
+  .flow-a { fill: none; stroke: #C9A227; stroke-width: 1.5; stroke-dasharray: 4 7; animation: dash 1.9s linear infinite; }
+  .grid   { stroke: #16162B; stroke-width: 1; }
+
+  @keyframes dash  { to { stroke-dashoffset: -28; } }
+  @keyframes beat  { 0%,100% { opacity: .35; } 50% { opacity: 1; } }
+  @keyframes halo  { 0%,100% { opacity: .18; transform: scale(1); } 50% { opacity: .45; transform: scale(1.13); } }
+
+  .live { animation: beat 2.1s ease-in-out infinite; }
+  .core { transform-origin: 96px 192px; animation: halo 2.6s ease-in-out infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .flow, .flow-g, .flow-a, .live, .core { animation: none; }
+  }
+</style>
+
+<defs>
+  <marker id="av" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,1 L9,5 L0,9 z" fill="#7C5CFF"/>
+  </marker>
+  <marker id="ag" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,1 L9,5 L0,9 z" fill="#3FD68C"/>
+  </marker>
+  <marker id="aa" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+    <path d="M0,1 L9,5 L0,9 z" fill="#C9A227"/>
+  </marker>
+  <radialGradient id="glow">
+    <stop offset="0%" stop-color="#FF4D8D" stop-opacity="0.9"/>
+    <stop offset="100%" stop-color="#FF4D8D" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+
+<rect class="bg" width="1440" height="1240"/>
+<g class="grid" opacity="0.55">
+  <path d="M0 240H1440M0 480H1440M0 720H1440M0 960H1440"/>
+  <path d="M240 0V1240M480 0V1240M720 0V1240M960 0V1240M1200 0V1240"/>
+</g>
+
+<!-- ─── header ─── -->
+<text class="h1" x="40" y="62">Multimodal Agentic AI Assistant</text>
+<text class="sub" x="41" y="88" style="letter-spacing:2.4px">LANGGRAPH PIPELINE &#183; ARCHITECTURE &amp; DATA FLOW</text>
+
+<circle cx="1218" cy="48" r="5" fill="#7C5CFF"/><text class="mono" x="1234" y="52">data flow</text>
+<circle cx="1218" cy="74" r="5" fill="#3FD68C"/><text class="mono" x="1234" y="78">runs in parallel</text>
+<circle cx="1218" cy="100" r="5" fill="#C9A227"/><text class="mono" x="1234" y="104">pause / resume</text>
+
+<!-- ─── entry points ─── -->
+<rect class="panel" x="660" y="34" width="220" height="74" rx="12"/>
+<text class="card" x="684" y="66">Streamlit UI</text>
+<text class="sub"  x="684" y="88">chat &#183; role switch &#183; image</text>
+
+<rect class="panel" x="900" y="34" width="260" height="74" rx="12"/>
+<text class="card" x="924" y="66">FastAPI</text>
+<text class="sub"  x="924" y="88">/brand &#183; /creator &#183; /health</text>
+
+<path class="edge flow" d="M770 108 C 770 132, 700 126, 690 148" marker-end="url(#av)"/>
+<path class="edge flow" d="M1030 108 C 1030 134, 800 128, 762 148" marker-end="url(#av)"/>
+
+<!-- ─── orchestrator ─── -->
+<rect class="panel-m" x="40" y="150" width="1358" height="86" rx="14"/>
+<circle class="core" cx="96" cy="192" r="30" fill="url(#glow)"/>
+<circle cx="96" cy="192" r="15" fill="none" stroke="#FF4D8D" stroke-width="1.4" stroke-dasharray="3 4"/>
+<circle cx="96" cy="192" r="5.5" fill="#FF4D8D"/>
+<text class="h2"   x="142" y="188">LangGraph Orchestrator &#8212; run_pipeline()</text>
+<text class="mono" x="143" y="214">StateGraph &#183; one typed <tspan fill="#B9B4E8">CampaynState</tspan> threads every node &#183; conditional edges &#183; checkpointer</text>
+
+<path class="edge flow" d="M719 236 V 268" marker-end="url(#av)"/>
+
+<!-- ─── intent parser ─── -->
+<rect class="panel-v" x="420" y="270" width="600" height="122" rx="13"/>
+<text class="eye"  x="444" y="298">NODE 1 &#183; REASONING</text>
+<circle class="live" cx="996" cy="294" r="5" fill="#3FD68C"/>
+<text class="card" x="444" y="326">Intent Parser</text>
+<text class="mono" x="444" y="352">plain English &#8594; typed FilterSpec + confidence score</text>
+<text class="sub"  x="444" y="374">niche &#183; follower tier &#183; CPV ceiling &#183; result count</text>
+
+<!-- human-in-the-loop branch -->
+<rect class="panel" x="40" y="270" width="340" height="122" rx="13" stroke="#5A4A1E"/>
+<text class="tiny" x="64" y="298" fill="#C9A227" style="letter-spacing:2.2px">HUMAN-IN-THE-LOOP</text>
+<text class="card" x="64" y="326">Ask, don&#8217;t guess</text>
+<text class="mono" x="64" y="352">missing field &#8594; graph pauses</text>
+<text class="sub"  x="64" y="374">2&#8211;3 multiple-choice questions</text>
+
+<path class="flow-a" d="M418 316 H 386" marker-end="url(#aa)"/>
+<text class="tiny" x="392" y="308">pause</text>
+<path class="flow-a" d="M386 352 H 418" marker-end="url(#aa)"/>
+<text class="tiny" x="390" y="372">resume</text>
+
+<!-- ─── parallel fan-out ─── -->
+<text class="eye-g" x="719" y="428" text-anchor="middle">PARALLEL FAN-OUT &#183; Send() DISPATCHES EVERY READY MODULE AT ONCE</text>
+
+<path class="flow-g" d="M660 392 C 480 404, 300 416, 257 448" marker-end="url(#ag)"/>
+<path class="flow-g" d="M719 392 V 448" marker-end="url(#ag)"/>
+<path class="flow-g" d="M780 392 C 960 404, 1140 416, 1181 448" marker-end="url(#ag)"/>
+
+<!-- module 1 -->
+<rect class="panel" x="40" y="450" width="434" height="300" rx="13"/>
+<text class="eye"  x="64" y="480">MODULE &#183; STRUCTURED SEARCH</text>
+<circle class="live" cx="450" cy="476" r="5" fill="#3FD68C"/>
+<text class="card" x="64" y="508">Creator Profile Filter</text>
+<path class="grid" d="M64 524 H 450" stroke="#262640"/>
+<circle cx="76" cy="552" r="11" fill="none" stroke="#4A3F8A"/><text class="num" x="76" y="556" text-anchor="middle">1</text>
+<text class="item" x="98" y="550">typed pandas filters</text><text class="sub" x="98" y="568">tier &#183; niche &#183; CPV &#183; follower range</text>
+<circle cx="76" cy="606" r="11" fill="none" stroke="#4A3F8A"/><text class="num" x="76" y="610" text-anchor="middle">2</text>
+<text class="item" x="98" y="604">dedupe by handle</text><text class="sub" x="98" y="622">56,355 rows &#8594; 38,169 real creators</text>
+<circle cx="76" cy="660" r="11" fill="none" stroke="#4A3F8A"/><text class="num" x="76" y="664" text-anchor="middle">3</text>
+<text class="item" x="98" y="658">relaxation ladder</text><text class="sub" x="98" y="676">0 matches &#8594; loosen softest filter, say so</text>
+<rect class="chip" x="64" y="700" width="386" height="34" rx="8"/>
+<text class="code" x="80" y="722">&#8594; ranked shortlist &#183; ~150ms &#183; no API call</text>
+
+<!-- module 2 -->
+<rect class="panel" x="502" y="450" width="434" height="300" rx="13"/>
+<text class="eye"  x="526" y="480">MODULE &#183; SEMANTIC RETRIEVAL</text>
+<circle class="live" cx="912" cy="476" r="5" fill="#3FD68C"/>
+<text class="card" x="526" y="508">Knowledge Base RAG</text>
+<path class="grid" d="M526 524 H 912" stroke="#262640"/>
+<circle cx="538" cy="552" r="11" fill="none" stroke="#4A3F8A"/><text class="num" x="538" y="556" text-anchor="middle">1</text>
+<text class="item" x="560" y="550">embed the query</text><text class="sub" x="560" y="568">gemini-embedding-2 &#183; 3,072-dim</text>
+<circle cx="538" cy="606" r="11" fill="none" stroke="#4A3F8A"/><text class="num" x="538" y="610" text-anchor="middle">2</text>
+<text class="item" x="560" y="604">vector search</text><text class="sub" x="560" y="622">ChromaDB &#183; 316 chunks &#183; cosine</text>
+<circle cx="538" cy="660" r="11" fill="none" stroke="#4A3F8A"/><text class="num" x="538" y="664" text-anchor="middle">3</text>
+<text class="item" x="560" y="658">role-aware re-rank</text><text class="sub" x="560" y="676">top-5 &#183; similarity floor drops noise</text>
+<rect class="chip" x="526" y="700" width="386" height="34" rx="8"/>
+<text class="code" x="542" y="722">&#8594; cited context &#183; fails soft, never fatal</text>
+
+<!-- module 3 -->
+<rect class="panel" x="964" y="450" width="434" height="300" rx="13"/>
+<text class="eye"  x="988" y="480">MODULE &#183; MULTIMODAL</text>
+<circle cx="1374" cy="476" r="5" fill="#4A4A6A"/>
+<text class="card" x="988" y="508">Creative Vision Analysis</text>
+<path class="grid" d="M988 524 H 1374" stroke="#262640"/>
+<circle cx="1000" cy="552" r="11" fill="none" stroke="#4A3F8A"/><text class="num" x="1000" y="556" text-anchor="middle">1</text>
+<text class="item" x="1022" y="550">VLM reads the creative</text><text class="sub" x="1022" y="568">hook &#183; lighting &#183; framing &#183; on-screen text</text>
+<circle cx="1000" cy="606" r="11" fill="none" stroke="#4A3F8A"/><text class="num" x="1000" y="610" text-anchor="middle">2</text>
+<text class="item" x="1022" y="604">35-field typed schema</text><text class="sub" x="1022" y="622">scores, not prose &#8212; downstream stays cheap</text>
+<circle cx="1000" cy="660" r="11" fill="none" stroke="#4A3F8A"/><text class="num" x="1000" y="664" text-anchor="middle">3</text>
+<text class="item" x="1022" y="658">brand-safety flags</text><text class="sub" x="1022" y="676">skipped entirely when no image is sent</text>
+<rect class="chip" x="988" y="700" width="386" height="34" rx="8"/>
+<text class="code" x="1004" y="722">&#8594; VisionAnalysis JSON &#183; conditional node</text>
+
+<!-- ─── fan-in ─── -->
+<path class="edge flow" d="M257 752 C 300 786, 480 796, 660 806" marker-end="url(#av)"/>
+<path class="edge flow" d="M719 752 V 786" marker-end="url(#av)"/>
+<path class="edge flow" d="M1181 752 C 1140 786, 960 796, 780 806" marker-end="url(#av)"/>
+
+<rect class="panel-v" x="300" y="788" width="840" height="76" rx="13"/>
+<text class="eye"  x="324" y="816">FAN-IN &#183; SYNTHESIS</text>
+<text class="mono" x="324" y="842" fill="#C9C5EC">Prompt Constructor &#8212; waits for every dispatched module, merges their blocks + last 3 turns + role persona</text>
+
+<path class="edge flow" d="M719 864 V 890" marker-end="url(#av)"/>
+
+<rect class="panel-g" x="300" y="892" width="840" height="76" rx="13"/>
+<text class="eye-g" x="324" y="920">GENERATION</text>
+<text class="mono"  x="324" y="946" fill="#C9C5EC">Generator &#8212; the only node that writes prose &#183; grounded in retrieved data, never freehand</text>
+
+<path class="edge flow" d="M560 968 C 520 984, 420 980, 372 992" marker-end="url(#av)"/>
+<path class="edge flow" d="M880 968 C 920 984, 1020 980, 1068 992" marker-end="url(#av)"/>
+
+<!-- ─── provider failover ─── -->
+<rect class="panel-g" x="40" y="994" width="680" height="206" rx="13"/>
+<text class="eye-g" x="64" y="1022">LLM PROVIDER LAYER &#183; generate_text()</text>
+<text class="sub"   x="64" y="1042">one call site &#8212; intent parser, generator and vision all route through it</text>
+
+<rect class="chip-g" x="64" y="1058" width="182" height="42" rx="9"/>
+<circle class="live" cx="84" cy="1079" r="5" fill="#3FD68C"/>
+<text class="item" x="98" y="1077">Gemini</text><text class="sub" x="98" y="1092">primary</text>
+<text class="mono" x="256" y="1084" fill="#4A3F8A">&#8594;</text>
+
+<rect class="chip" x="278" y="1058" width="182" height="42" rx="9"/>
+<text class="item" x="296" y="1077">Nemotron</text><text class="sub" x="296" y="1092">OpenRouter &#183; free tier</text>
+<text class="mono" x="470" y="1084" fill="#4A3F8A">&#8594;</text>
+
+<rect class="chip" x="492" y="1058" width="182" height="42" rx="9"/>
+<text class="item" x="510" y="1077">Claude</text><text class="sub" x="510" y="1092">last resort</text>
+
+<rect class="chip-r" x="64" y="1114" width="610" height="34" rx="8"/>
+<circle cx="82" cy="1131" r="4.5" fill="#FF5C5C"/>
+<text class="code" x="96" y="1136" fill="#E8B4B4">primary 429s &#8594; same prompt retried on the next provider &#183; no error surfaces</text>
+
+<rect class="inner" x="64" y="1158" width="196" height="30" rx="7"/><text class="sub" x="80" y="1177">vision: Gemini &#8594; Claude</text>
+<rect class="inner" x="272" y="1158" width="196" height="30" rx="7"/><text class="sub" x="288" y="1177">REST transport (gRPC-safe)</text>
+<rect class="inner" x="480" y="1158" width="194" height="30" rx="7"/><text class="sub" x="496" y="1177">per-provider logging</text>
+
+<!-- ─── state / storage ─── -->
+<rect class="panel" x="752" y="994" width="646" height="206" rx="13"/>
+<text class="eye"  x="776" y="1022">STATE &#183; MEMORY &#183; OBSERVABILITY</text>
+<text class="sub"  x="776" y="1042">parallel writes merge through a reducer; history survives a restart</text>
+
+<rect class="inner" x="776" y="1058" width="296" height="56" rx="9"/>
+<text class="item" x="794" y="1082">Redis</text><text class="sub" x="794" y="1101">last 10 turns &#183; TTL 3600s &#183; fails soft</text>
+
+<rect class="inner" x="1088" y="1058" width="294" height="56" rx="9"/>
+<text class="item" x="1106" y="1082">ChromaDB</text><text class="sub" x="1106" y="1101">persisted vector store &#183; 316 chunks</text>
+
+<rect class="inner" x="776" y="1128" width="296" height="56" rx="9"/>
+<text class="item" x="794" y="1152">Checkpointer</text><text class="sub" x="794" y="1171">holds the graph mid-run for MCQ answers</text>
+
+<rect class="inner" x="1088" y="1128" width="294" height="56" rx="9"/>
+<text class="item" x="1106" y="1152">LangSmith</text><text class="sub" x="1106" y="1171">traced runs &#183; latency &#183; user feedback</text>
+</svg>

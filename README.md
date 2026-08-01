@@ -1,5 +1,11 @@
 # Campayn — Multimodal Agentic AI Assistant
 
+[![Architecture and data flow of the multimodal agentic AI assistant: Streamlit and FastAPI entry points, a LangGraph orchestrator, an intent parser that pauses to ask clarifying questions, three modules running in parallel, a prompt constructor, a generator with three-tier LLM failover, and Redis-backed state](docs/architecture.svg)](https://mohitcr7.github.io/campayn-multimodal-ai-assistant/)
+
+**▶ [Open the interactive version](https://mohitcr7.github.io/campayn-multimodal-ai-assistant/)** — click any node to inspect it, run an animated request through the graph, and flip an LLM outage switch to watch the failover chain reroute.
+
+---
+
 A dual-role (brand + creator) influencer-marketing assistant that combines **structured retrieval over 56K+ creator profiles**, **Retrieval-Augmented Generation (RAG)** over a domain knowledge base, and **multimodal vision analysis** behind a single **LangGraph** agentic pipeline.
 
 **Stack:** Python · LangGraph · LangChain · ChromaDB · Google Gemini · Anthropic Claude · FastAPI · Pydantic · Redis · Streamlit · Docker · LangSmith
