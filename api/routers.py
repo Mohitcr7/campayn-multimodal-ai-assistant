@@ -198,17 +198,29 @@ async def log_feedback(request: FeedbackRequest) -> FeedbackResponse:
         {"run_id": "abc123", "score": 1.0, "comment": "Very helpful!"}
     """
     from api.observability.langsmith_setup import log_feedback as _log
+    from api.db import save_feedback
 
-    success = _log(
+    # Postgres is the durable record; LangSmith is for trace-level analysis.
+    # Either can be down without failing the request.
+    stored = save_feedback(
+        run_id  = request.run_id,
+        score   = request.score,
+        comment = request.comment,
+    )
+    traced = _log(
         run_id  = request.run_id,
         score   = request.score,
         comment = request.comment or "",
     )
 
-    return FeedbackResponse(
-        success = success,
-        message = "Feedback logged" if success else "Feedback logging failed (LangSmith may be disabled)",
-    )
+    if stored:
+        message = "Feedback saved"
+    elif traced:
+        message = "Feedback sent to LangSmith (database unavailable)"
+    else:
+        message = "Feedback not recorded — database and LangSmith both unavailable"
+
+    return FeedbackResponse(success=stored or traced, message=message)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -264,6 +276,14 @@ async def health_check() -> HealthResponse:
     # Check Gemini
     gemini_key = os.environ.get("GEMINI_API_KEY", "")
     modules["gemini"] = "configured" if gemini_key else "missing GEMINI_API_KEY"
+
+    # Postgres — checkpoints + feedback/run log (see api/db.py)
+    from api.db import health as db_health
+    modules["postgres"] = db_health()
+
+    # Redis intent-parse cache (see api/cache.py) — separate from history
+    from api.cache import health as cache_health
+    modules["intent_cache"] = cache_health()
 
     # Fallback chain if Gemini fails: Nemotron (OpenRouter) → Claude — see api/llm_fallback.py
     openrouter_key = os.environ.get("OPENROUTER_API_KEY", "")

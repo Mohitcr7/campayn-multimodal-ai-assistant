@@ -190,8 +190,8 @@
         <!-- MEMORY -->
         <g class="node" id="n-mem" tabindex="0">
           <rect x="255" y="816" width="250" height="80"/>
-          <text x="380" y="846" text-anchor="middle">🗄 CONVERSATION MEMORY</text>
-          <text x="380" y="866" text-anchor="middle" class="tag">REDIS · LAST 10 TURNS · TTL</text>
+          <text x="380" y="846" text-anchor="middle">🗄 STATE &amp; MEMORY</text>
+          <text x="380" y="866" text-anchor="middle" class="tag">POSTGRES CHECKPOINTS · REDIS HISTORY</text>
         </g>
 
         <circle id="pulseDot" class="pulse" r="6" opacity="0"/>
@@ -205,7 +205,7 @@
       <h2 id="insTitle">Explore the pipeline</h2>
       <p id="insBody">Every box is clickable. Each one is a node in a <b>LangGraph state machine</b> — an agent graph where state flows through typed channels, branches pause for human input, and independent work runs concurrently.</p>
       <div class="tech" id="insTech">
-        <span>LangGraph</span><span>FastAPI</span><span>ChromaDB</span><span>Redis</span><span>Streamlit</span>
+        <span>LangGraph</span><span>FastAPI</span><span>PostgreSQL</span><span>ChromaDB</span><span>Redis</span>
       </div>
       <div class="metric" id="insMetric">7 nodes · 3 run in parallel · wall-clock = slowest module, not the sum</div>
     </aside>
@@ -215,7 +215,7 @@
 
   <div class="foot">
     <span class="lbl">Stack</span>
-    <span class="t">Python</span><span class="t">LangGraph</span><span class="t">LangChain</span><span class="t">ChromaDB</span><span class="t">pandas</span><span class="t">FastAPI</span><span class="t">Pydantic</span><span class="t">Redis</span><span class="t">Streamlit</span><span class="t">Docker</span><span class="t">LangSmith</span>
+    <span class="t">Python</span><span class="t">LangGraph</span><span class="t">LangChain</span><span class="t">ChromaDB</span><span class="t">pandas</span><span class="t">FastAPI</span><span class="t">Pydantic</span><span class="t">PostgreSQL</span><span class="t">Redis</span><span class="t">Streamlit</span><span class="t">Docker</span><span class="t">Kubernetes</span><span class="t">LangSmith</span>
   </div>
 </div>
 
@@ -230,7 +230,7 @@
     'n-m3':{k:'RETRIEVAL · PARALLEL',c:'var(--violet)',t:'Vision analysis',b:'If an image came in, a multimodal model scores it across a <b>35-field structured schema</b>: hook strength, lighting, framing, on-screen text legibility, CTA clarity, brand safety. The LLM never sees raw pixels downstream — just this compact structured report.',tech:['VLM','structured output','brand-safety flags'],m:'skipped entirely when no image — zero wasted calls'},
     'n-pb':{k:'SYNTHESIS',c:'var(--amber)',t:'Prompt builder',b:'The fan-in point. Waits for every dispatched module, then compiles their outputs — profile shortlist, knowledge chunks, vision report — plus the <b>last 3 conversation turns</b> into one grounded prompt with a role-specific system persona.',tech:['fan-in barrier','context assembly','token budgeting'],m:'wall-clock = slowest module, not the sum of all three'},
     'n-gen':{k:'GENERATION',c:'var(--amber)',t:'Generator with 3-tier failover',b:'The only node that writes prose. It tries the <b>primary LLM</b>; on any failure — rate limit, quota, outage — it retries the same prompt on a <b>free-tier backup</b>, then a <b>second backup</b>. The user never sees the switch; the response just arrives.',tech:['provider abstraction','automatic retry','JSON mode','per-provider logging'],m:'tested in production: primary quota exhausted → backup served 100% of traffic'},
-    'n-mem':{k:'STATE',c:'var(--green)',t:'Conversation memory',b:'Each turn is appended to a Redis-backed history with a TTL — capped at 10 turns so context stays sharp and cheap. Next request, the intent parser reads it back and the assistant remembers the campaign you were planning.',tech:['Redis','TTL expiry','turn capping'],m:'survives restarts · fails soft to stateless mode'}
+    'n-mem':{k:'STATE',c:'var(--green)',t:'State &amp; memory',b:'Two stores, two jobs. <b>Postgres</b> holds graph checkpoints plus feedback and a run log — durable, and shared by every API replica, so the pods themselves stay stateless. <b>Redis</b> holds conversation history (1h TTL) and the intent-parse cache (24h), capped with LRU so it can never grow without bound.',tech:['PostgreSQL','Redis','TTL + LRU','stateless pods'],m:'checkpoints left process memory: the old in-process store leaked ~115 KB per turn with no eviction'}
   };
   let active=null;
   function inspect(id){

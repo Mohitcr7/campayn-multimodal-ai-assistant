@@ -170,7 +170,24 @@ async def startup_event():
         print(f"[Startup] ⚠ ChromaDB failed: {e}")
         print(f"[Startup]   Run: python scripts/ingest_knowledge_base.py --reset")
 
-    # 4. Compile LangGraph pipeline
+    # 4. Postgres — checkpoint store + feedback/run log.
+    #    Must run BEFORE the graph compiles, because the checkpointer
+    #    picks Postgres only if the pool is already up.
+    try:
+        from api.db import init_schema, health as db_health
+        init_schema()
+        print(f"[Startup] Postgres: {db_health()}")
+    except Exception as e:
+        print(f"[Startup] ⚠ Postgres init failed: {e} — falling back to in-memory checkpoints")
+
+    # 5. Redis intent-parse cache (separate from conversation history)
+    try:
+        from api.cache import health as cache_health
+        print(f"[Startup] Intent cache: {cache_health()}")
+    except Exception as e:
+        print(f"[Startup] ⚠ Cache init failed: {e}")
+
+    # 6. Compile LangGraph pipeline
     try:
         from api.graph import get_graph
         get_graph()
@@ -191,6 +208,11 @@ async def startup_event():
 async def shutdown_event():
     """Clean up resources on shutdown."""
     print("[Shutdown] Campayn AI Assistant shutting down...")
+    try:
+        from api.db import close_pool
+        close_pool()
+    except Exception as e:
+        print(f"[Shutdown] Pool close failed: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────

@@ -661,6 +661,31 @@ def node_save_memory(state: CampaynState) -> dict:
 #   A list of Send() objects → dispatch multiple nodes in parallel
 # ─────────────────────────────────────────────────────────────────
 
+def _build_checkpointer():
+    """
+    Return a PostgresSaver when the database is reachable, else MemorySaver.
+
+    Postgres keeps checkpoints out of process memory and shares them across
+    workers. MemorySaver stays as the fallback so local development and a
+    database outage both still work — with the leak trade-off documented in
+    api/db.py.
+    """
+    try:
+        from api.db import get_pool
+        pool = get_pool()
+        if pool is not None:
+            from langgraph.checkpoint.postgres import PostgresSaver
+            saver = PostgresSaver(pool)
+            saver.setup()                      # idempotent DDL
+            print("[Graph] Checkpointer: PostgresSaver (durable, shared across workers)")
+            return saver
+    except Exception as e:
+        print(f"[Graph] ⚠ Postgres checkpointer unavailable ({e})")
+
+    print("[Graph] Checkpointer: MemorySaver (in-process, not durable — dev fallback)")
+    return MemorySaver()
+
+
 def route_after_intent(state: CampaynState):
     """
     Called after node_intent_parser completes.
@@ -796,10 +821,17 @@ def build_graph() -> Any:
 
     # ── Step 6: Compile the graph ──────────────────────────────────
     # compile() locks the graph structure — no more add_node/add_edge after this.
-    # MemorySaver checkpointer = saves state between runs for the MCQ
-    # pause-and-resume pattern. Without it, graph.invoke() can't resume
-    # a paused conversation.
-    checkpointer = MemorySaver()
+    #
+    # The checkpointer stores graph state per thread_id (= session_id).
+    # Postgres is preferred over MemorySaver for two reasons:
+    #   * MemorySaver keeps EVERY checkpoint version for EVERY session in
+    #     process memory with no TTL and no eviction (~115 KB per turn,
+    #     ~7 checkpoints per request) — an unbounded leak on a long-lived pod.
+    #   * MemorySaver is per-process, so with >1 worker a session's state
+    #     usually isn't on the worker that handles the next request.
+    # If Postgres is unreachable we degrade to MemorySaver rather than
+    # refusing to start — a database outage shouldn't take the API down.
+    checkpointer = _build_checkpointer()
     graph = builder.compile(checkpointer=checkpointer)
 
     print("[Graph] ✅ Pipeline compiled — parallel module execution enabled")

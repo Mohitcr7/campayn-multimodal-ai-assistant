@@ -1,0 +1,81 @@
+# Postgres runs as a StatefulSet, not a Deployment.
+# A StatefulSet gives each replica a stable name and its own persistent
+# volume that is re-attached to the same pod across restarts — which is
+# what a database needs. A Deployment would treat pods as interchangeable.
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: campayn
+spec:
+  # Headless service (clusterIP: None) — DNS resolves straight to the pod
+  # rather than load balancing, which is what you want for a single primary.
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: campayn
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          envFrom:
+            - secretRef:
+                name: postgres-credentials
+          env:
+            # Postgres writes into a lost+found on some volumes; a subdirectory
+            # keeps initdb happy on PVCs that aren't empty at mount time.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+          # Readiness gates traffic; liveness restarts a wedged process.
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "campayn", "-d", "campayn"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "campayn", "-d", "campayn"]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi

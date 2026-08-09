@@ -34,8 +34,15 @@ python-multipart==0.0.12
 pydantic==2.9.2
 pydantic-settings==2.5.2
 
-# ── Conversation memory ──────────────────────────────────────────────────
+# ── Conversation memory + intent-parse cache ─────────────────────────────
 redis==5.1.0
+
+# ── PostgreSQL: LangGraph checkpoints + feedback/run log ─────────────────
+# langgraph-checkpoint-postgres is pinned to the 1.0.x line on purpose.
+# 2.x/3.x require langgraph-checkpoint>=2, which would force an upgrade of
+# langgraph itself away from the 0.2.28 API this project is written against.
+langgraph-checkpoint-postgres==1.0.9
+psycopg[binary,pool]==3.3.4
 
 # ── Document loaders ─────────────────────────────────────────────────────
 python-docx==1.1.2

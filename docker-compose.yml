@@ -32,7 +32,6 @@
 #   docker-compose logs -f api    # tail logs from the api service
 # ─────────────────────────────────────────────────────────────────
 
-version: "3.9"
 
 services:
 
@@ -51,6 +50,8 @@ services:
       # Inside Docker, containers talk to each other by service name
       # 'redis' is the service name defined below — not localhost
       - REDIS_URL=redis://redis:6379
+      # Postgres holds LangGraph checkpoints + feedback. Service name, not localhost.
+      - DATABASE_URL=postgresql://campayn:campayn@postgres:5432/campayn
       - ENVIRONMENT=production
     volumes:
       # Mount data directory so ChromaDB index persists
@@ -60,7 +61,12 @@ services:
       # Mount logs directory for easy access from host
       - ./logs:/app/logs
     depends_on:
-      - redis           # wait for redis to start before api starts
+      redis:
+        condition: service_started
+      postgres:
+        # Wait for the healthcheck, not just the process — the API picks
+        # Postgres for checkpoints only if it can connect at startup.
+        condition: service_healthy
     restart: unless-stopped   # auto-restart if container crashes
     healthcheck:
       # Docker pings this endpoint every 30s to check if api is alive
@@ -108,10 +114,37 @@ services:
     restart: unless-stopped
     # Run redis with persistence enabled
     # appendonly yes = write every operation to disk (safer than default)
-    command: redis-server --appendonly yes
+    # maxmemory + LRU means the intent cache can never grow without bound.
+    command: >
+      redis-server --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+
+  # ── PostgreSQL — LangGraph checkpoints + feedback/run log ─────
+  # Replaces the in-process MemorySaver, which kept every checkpoint
+  # version for every session in RAM with no TTL and no eviction.
+  postgres:
+    image: postgres:16-alpine
+    container_name: campayn-postgres
+    ports:
+      - "5432:5432"   # exposed for psql/debugging from the host
+    environment:
+      - POSTGRES_USER=campayn
+      - POSTGRES_PASSWORD=campayn
+      - POSTGRES_DB=campayn
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      # api waits on this via depends_on: condition: service_healthy
+      test: ["CMD-SHELL", "pg_isready -U campayn -d campayn"]
+      interval: 5s
+      timeout:  5s
+      retries:  10
 
 # ── Named volumes ─────────────────────────────────────────────
 # Named volumes are managed by Docker — they persist on the host
 # even after containers are removed. Better than anonymous volumes.
 volumes:
   redis_data:     # Redis persistence data
+  postgres_data:  # Postgres data directory

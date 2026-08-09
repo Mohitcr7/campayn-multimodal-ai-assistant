@@ -82,8 +82,10 @@ EXPOSE 8000
 #                   Required inside a container — otherwise the
 #                   app only listens inside the container and
 #                   external traffic never reaches it.
-# --workers 1     = single worker (stateful LangGraph checkpointer
-#                   doesn't support multiple workers without Redis)
+# --workers 1     = one uvicorn worker per container. Checkpoints now live
+#                   in Postgres, so the app itself is stateless and scaling
+#                   is done by adding replicas (see k8s/05-api.yaml), which
+#                   is easier to schedule and restart than in-process workers.
 CMD ["uvicorn", "api.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \

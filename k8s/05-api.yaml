@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: campayn-api
+  namespace: campayn
+spec:
+  selector:
+    app: campayn-api
+  ports:
+    - port: 8000
+      targetPort: 8000
+      name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campayn-api
+  namespace: campayn
+spec:
+  # Two replicas is only safe because checkpoints now live in Postgres.
+  # With the old in-process MemorySaver, a second replica would have had
+  # its own copy of state and sessions would break depending on which pod
+  # answered the request.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: campayn-api
+  template:
+    metadata:
+      labels:
+        app: campayn-api
+    spec:
+      # Postgres must be accepting connections before the API starts, or the
+      # graph compiles with the MemorySaver fallback and never re-checks.
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16-alpine
+          command:
+            - sh
+            - -c
+            - |
+              until pg_isready -h postgres -p 5432 -U campayn; do
+                echo "waiting for postgres..."
+                sleep 2
+              done
+      containers:
+        - name: api
+          image: campayn-ai:latest
+          # kind/minikube load the image locally; never pull from a registry.
+          imagePullPolicy: IfNotPresent
+          command:
+            - uvicorn
+            - api.main:app
+            - --host
+            - "0.0.0.0"
+            - --port
+            - "8000"
+            - --workers
+            - "1"
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: campayn-config
+            - secretRef:
+                name: campayn-secret
+          # Startup probe covers the slow boot: loading 56k profiles, opening
+          # ChromaDB and compiling the graph takes longer than a normal
+          # readiness window. 30 x 5s = up to 150s before it is declared failed.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "768Mi"     # pandas holds 56k rows + embeddings client
+              cpu: "250m"
+            limits:
+              memory: "1536Mi"
+              cpu: "1000m"
+          securityContext:
+            runAsNonRoot: true
+            # Must be numeric. The Dockerfile does `USER appuser`, and kubelet
+            # cannot verify a *named* user is non-root — it refuses to start the
+            # container with "image has non-numeric user (appuser)". 1000 is the
+            # UID adduser assigns to the first non-system user on Debian slim.
+            runAsUser: 1000
+            allowPrivilegeEscalation: false

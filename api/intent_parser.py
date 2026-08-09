@@ -373,6 +373,14 @@ def stage1_extract(query: str, role: str = "brand") -> dict:
     """
     prompt = _build_prompt(query, role)
 
+    # ── Cache lookup ─────────────────────────────────────────────────────
+    # Stage 1 runs at temperature 0, so the same query always produces the
+    # same extraction — a repeat query can skip the LLM call entirely.
+    from api.cache import get_intent, set_intent
+    cached = get_intent(query, role, GEMINI_MODEL)
+    if cached is not None:
+        return cached
+
     raw_text = ""  # will hold the raw string the model returns
 
     try:
@@ -428,6 +436,9 @@ def stage1_extract(query: str, role: str = "brand") -> dict:
     print(f"[Stage 1] confidence={parsed.get('confidence')}  "
           f"missing={parsed.get('missing_fields')}  "
           f"reasoning={parsed.get('reasoning')}")
+
+    # Store for next time (low-confidence results are skipped inside set_intent)
+    set_intent(query, role, GEMINI_MODEL, parsed)
 
     return parsed
 

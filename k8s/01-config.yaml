@@ -1,0 +1,52 @@
+# Non-secret configuration.
+# Service hostnames (postgres, redis) are Kubernetes DNS names — inside the
+# namespace, a Service called "postgres" resolves at postgres:5432.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: campayn-config
+  namespace: campayn
+data:
+  ENVIRONMENT:              "production"
+  API_HOST:                 "0.0.0.0"
+  API_PORT:                 "8000"
+
+  # Postgres owns LangGraph checkpoints + feedback/run log.
+  DATABASE_URL:             "postgresql://campayn:campayn@postgres:5432/campayn"
+  DB_ENABLED:               "true"
+  DB_POOL_MIN:              "1"
+  DB_POOL_MAX:              "5"
+
+  # Redis serves two separate jobs: conversation history and the intent cache.
+  REDIS_URL:                "redis://redis:6379"
+  CONVERSATION_TTL_SECONDS: "3600"
+  CACHE_ENABLED:            "true"
+  INTENT_CACHE_TTL_SECONDS: "86400"
+
+  # Models
+  GEMINI_MODEL:             "gemini-2.5-flash"
+  GEMINI_VISION_MODEL:      "gemini-2.5-flash"
+  OPENROUTER_MODEL:         "nvidia/nemotron-3-ultra-550b-a55b:free"
+  ANTHROPIC_MODEL:          "claude-sonnet-4-5"
+
+  # Vector store + data (baked into the image at build time)
+  CHROMA_PERSIST_DIR:       "data/vector_store"
+  CHROMA_COLLECTION_NAME:   "campayn_knowledge_base"
+  KNOWLEDGE_BASE_PATH:      "data/raw/knowledge_base.txt"
+  MAX_RAG_CHUNKS:           "5"
+
+  LANGCHAIN_TRACING_V2:     "false"
+  LANGCHAIN_PROJECT:        "campayn-ai-assistant"
+---
+# Postgres credentials for the database container itself.
+# Kept separate from campayn-secret so the app secret holds only API keys.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-credentials
+  namespace: campayn
+type: Opaque
+stringData:
+  POSTGRES_USER:     "campayn"
+  POSTGRES_PASSWORD: "campayn"
+  POSTGRES_DB:       "campayn"

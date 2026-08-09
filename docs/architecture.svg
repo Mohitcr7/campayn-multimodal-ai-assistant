@@ -214,16 +214,16 @@
 <!-- ─── state / storage ─── -->
 <rect class="panel" x="752" y="994" width="646" height="206" rx="13"/>
 <text class="eye"  x="776" y="1022">STATE &#183; MEMORY &#183; OBSERVABILITY</text>
-<text class="sub"  x="776" y="1042">parallel writes merge through a reducer; history survives a restart</text>
+<text class="sub"  x="776" y="1042">checkpoints in Postgres, not process memory &#8212; API pods stay stateless</text>
 
 <rect class="inner" x="776" y="1058" width="296" height="56" rx="9"/>
-<text class="item" x="794" y="1082">Redis</text><text class="sub" x="794" y="1101">last 10 turns &#183; TTL 3600s &#183; fails soft</text>
+<text class="item" x="794" y="1082">PostgreSQL</text><text class="sub" x="794" y="1101">graph checkpoints &#183; feedback &#183; run log</text>
 
 <rect class="inner" x="1088" y="1058" width="294" height="56" rx="9"/>
 <text class="item" x="1106" y="1082">ChromaDB</text><text class="sub" x="1106" y="1101">persisted vector store &#183; 316 chunks</text>
 
 <rect class="inner" x="776" y="1128" width="296" height="56" rx="9"/>
-<text class="item" x="794" y="1152">Checkpointer</text><text class="sub" x="794" y="1171">holds the graph mid-run for MCQ answers</text>
+<text class="item" x="794" y="1152">Redis</text><text class="sub" x="794" y="1171">history 1h &#183; intent cache 24h &#183; LRU</text>
 
 <rect class="inner" x="1088" y="1128" width="294" height="56" rx="9"/>
 <text class="item" x="1106" y="1152">LangSmith</text><text class="sub" x="1106" y="1171">traced runs &#183; latency &#183; user feedback</text>

@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: campayn-ui
+  namespace: campayn
+spec:
+  # NodePort so a local kind/minikube cluster is reachable from the browser
+  # without installing an ingress controller.
+  type: NodePort
+  selector:
+    app: campayn-ui
+  ports:
+    - port: 8501
+      targetPort: 8501
+      nodePort: 30085
+      name: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: campayn-ui
+  namespace: campayn
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: campayn-ui
+  template:
+    metadata:
+      labels:
+        app: campayn-ui
+    spec:
+      containers:
+        - name: ui
+          image: campayn-ai:latest       # same image, different entrypoint
+          imagePullPolicy: IfNotPresent
+          command:
+            - streamlit
+            - run
+            - frontend/streamlit_app.py
+            - --server.port=8501
+            - --server.address=0.0.0.0
+            - --server.headless=true
+          ports:
+            - containerPort: 8501
+          env:
+            # This is why streamlit_app.py reads API_BASE_URL from the
+            # environment instead of hardcoding localhost — in-cluster the
+            # API is reached by its Service name, not localhost.
+            - name: API_BASE_URL
+              value: "http://campayn-api:8000"
+          readinessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /_stcore/health
+              port: 8501
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000        # numeric — kubelet cannot verify `USER appuser`
+            allowPrivilegeEscalation: false

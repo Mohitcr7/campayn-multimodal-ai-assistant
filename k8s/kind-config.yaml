@@ -1,0 +1,11 @@
+# Local kind cluster for the Campayn stack.
+# extraPortMappings exposes the UI's NodePort (30085) on the host, so
+# http://localhost:30085 reaches the Streamlit service without an Ingress.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30085
+        hostPort: 30085
+        protocol: TCP
